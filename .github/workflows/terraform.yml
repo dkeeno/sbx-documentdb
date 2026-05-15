@@ -48,12 +48,14 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # validate — runs on every PR + main push
+  # validate — runs on EVERY trigger (PR, push, dispatch).
+  # On workflow_dispatch this gives a connected graph: validate → plan →
+  # apply → seed all flow green in one run instead of two disconnected
+  # experiences (one greyed plan run + one greyed apply run).
   # ---------------------------------------------------------------------------
   validate:
     name: validate
     runs-on: ubuntu-latest
-    if: github.event_name != 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
 
@@ -71,12 +73,12 @@ jobs:
         run: terraform validate
 
   # ---------------------------------------------------------------------------
-  # plan — runs on every PR + main push
+  # plan — runs on every trigger. PR comment with diff still posts only
+  # on pull_request events (see the script step's own `if`).
   # ---------------------------------------------------------------------------
   plan:
     name: plan
     runs-on: ubuntu-latest
-    if: github.event_name != 'workflow_dispatch'
     needs: validate
     steps:
       - uses: actions/checkout@v4
@@ -146,8 +148,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: plan
     if: |
-      always() &&
-      github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+      github.event_name == 'workflow_dispatch'
+      && inputs.action == 'apply'
+      && needs.plan.result == 'success'
     steps:
       - uses: actions/checkout@v4
 
@@ -309,8 +312,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: plan
     if: |
-      always() &&
-      github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+      github.event_name == 'workflow_dispatch'
+      && inputs.action == 'destroy'
+      && needs.plan.result == 'success'
     steps:
       - uses: actions/checkout@v4
 
