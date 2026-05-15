@@ -135,9 +135,16 @@ jobs:
   # ---------------------------------------------------------------------------
   # apply — workflow_dispatch only (the dispatch IS the manual gate)
   # ---------------------------------------------------------------------------
+  #
+  # `needs: plan` ties this to the plan node so the GitHub Actions graph
+  # renders as one continuous pipeline (validate → plan → apply → seed)
+  # rather than disconnected chains. `if: always()` handles the case where
+  # plan is SKIPPED (workflow_dispatch path) — without always(), GitHub
+  # cascade-skips dependents of skipped jobs.
   apply:
     name: apply
     runs-on: ubuntu-latest
+    needs: plan
     if: |
       always() &&
       github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
@@ -295,10 +302,15 @@ jobs:
   # ---------------------------------------------------------------------------
   # destroy — workflow_dispatch only
   # ---------------------------------------------------------------------------
+  # `needs: plan` here too keeps the graph connected. always() lets it run
+  # even when plan was skipped (which it always is on workflow_dispatch).
   destroy:
     name: destroy
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+    needs: plan
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
     steps:
       - uses: actions/checkout@v4
 
