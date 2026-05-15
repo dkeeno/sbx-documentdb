@@ -60,23 +60,31 @@ DOCDB_PWD=$(aws secretsmanager get-secret-value \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['password'])")
 echo "Username: $DOCDB_USER (password fetched, length=${#DOCDB_PWD})"
 
-# Build the connection URI. directConnection=true forces mongosh to talk
-# to the writer endpoint we passed (rather than discovering replica-set
-# topology — DocumentDB is wire-compatible but its topology discovery is
-# slightly different from real MongoDB).
-URI="mongodb://${DOCDB_USER}:${DOCDB_PWD}@${DOCDB_HOST}:27017/admin?tls=true&tlsAllowInvalidHostnames=true&retryWrites=false&directConnection=true"
+# Build the host-only URI; pass credentials via CLI flags so special
+# characters in the password (slashes, '@', etc.) don't break URI parsing.
+# directConnection=true forces mongosh to talk to the writer endpoint
+# (DocumentDB is wire-compatible but topology discovery differs slightly).
+URI="mongodb://${DOCDB_HOST}:27017/admin?tls=true&tlsAllowInvalidHostnames=true&retryWrites=false&directConnection=true"
+
+# Common mongosh flags (also masks the password from the rendered URI).
+MONGO_ARGS=(
+  --tlsCAFile "$CA_BUNDLE"
+  --username  "$DOCDB_USER"
+  --password  "$DOCDB_PWD"
+  --quiet
+)
 
 echo ""
 echo "=== Applying seed scripts in order ==="
 cd "$SEED_DROP"
 for f in $(ls -1 0*.js | sort); do
   echo "--- $f ---"
-  mongosh "$URI" --tlsCAFile "$CA_BUNDLE" --quiet --file "$f"
+  mongosh "$URI" "${MONGO_ARGS[@]}" --file "$f"
 done
 
 echo ""
 echo "=== Verifying ==="
-mongosh "$URI" --tlsCAFile "$CA_BUNDLE" --quiet --eval '
+mongosh "$URI" "${MONGO_ARGS[@]}" --eval '
   db = db.getSiblingDB("enterprise_corp");
   db.getCollectionNames().sort().forEach(c => print(c + " -> " + db[c].countDocuments() + " docs"));
   print("---");
