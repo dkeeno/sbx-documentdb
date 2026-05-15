@@ -56,7 +56,17 @@ db.employees.createIndex({ employee_number: 1 }, { unique: true, name: "uq_emplo
 db.employees.createIndex({ email: 1 }, { unique: true, name: "uq_email" });
 db.employees.createIndex({ department_code: 1, is_active: 1 }, { name: "ix_dept_active" });
 db.employees.createIndex({ manager_id: 1 }, { name: "ix_manager" });
-db.employees.createIndex({ full_name: "text", "skills.name": "text" }, { name: "tx_search" });
+// DocumentDB compat: text index can't include array-element paths ("multikey").
+// Real MongoDB allows {"skills.name": "text"} but DocDB rejects with
+// "text index does not support multikey paths" at INSERT time on docs with
+// non-empty `skills` arrays. Index `full_name` only; to search skills,
+// use $elemMatch or aggregation $unwind instead.
+//
+// Drop the (possibly bad) prior index by name first so re-runs converge
+// when the spec changes — createIndex is a no-op if same name+spec, but
+// throws on same-name-different-spec.
+try { db.employees.dropIndex("tx_search"); } catch (e) { /* didn't exist */ }
+db.employees.createIndex({ full_name: "text" }, { name: "tx_search" });
 // Partial: active employees only
 db.employees.createIndex(
   { hired_at: -1 },
